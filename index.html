@@ -1,0 +1,1538 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Aterriza la Nave</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: consola de misión — escena lunar a la izquierda, tablero de instrumentos a la derecha; en móvil se apilan. */
+:root {
+  --bg: #eef0ec;          /* papel técnico, ligeramente verdoso */
+  --panel: #f8f9f6;
+  --line: #cfd4cb;
+  --fg: #1d2420;
+  --muted: #5d675f;
+  --human: #c2410c;       /* Humano: naranja de propulsor */
+  --lqr: #1d5f9e;         /* LQR: azul de ingeniería */
+  --nn: #6d3fc0;          /* Red por gradiente: violeta */
+  --mpc: #b3306f;         /* MPC: magenta */
+  --adp: #6d3fc0;         /* LQR aprendido: violeta */
+  --evo: #0f7a6c;         /* Red evolutiva: verde azulado */
+  --good: #2f7d4a;
+  --bad: #b3261e;
+  --chip-fg: #ffffff;
+  --focus: #1d5f9e;
+  --font-display: "Saira Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111513; --panel: #181d1a; --line: #2c342f; --fg: #e5ebe6; --muted: #98a39b;
+    --human: #f08a4b; --lqr: #6aa9e6; --nn: #a88bf0; --adp: #a88bf0; --mpc: #f07ab4; --evo: #4fc1b5; --good: #5fbf7f; --bad: #f07167;
+    --chip-fg: #111513; --focus: #6aa9e6; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111513; --panel: #181d1a; --line: #2c342f; --fg: #e5ebe6; --muted: #98a39b;
+  --human: #f08a4b; --lqr: #6aa9e6; --nn: #a88bf0; --adp: #a88bf0; --mpc: #f07ab4; --evo: #4fc1b5; --good: #5fbf7f; --bad: #f07167;
+  --chip-fg: #111513; --focus: #6aa9e6; color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; }
+.app { max-width: 1320px; margin: 0 auto; padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 12px; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 20px; }
+.brand h1 { font-family: var(--font-display); font-weight: 700; font-size: 34px; line-height: 1; margin: 0; letter-spacing: .01em; text-transform: uppercase; }
+.brand p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.formula { font-family: var(--font-mono); font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); background: var(--panel); border-radius: 4px; }
+.formula b { font-weight: 500; }
+
+.modes { display: flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
+.modes button { border: 0; background: transparent; padding: 8px 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; border-right: 1px solid var(--line); }
+.modes button:last-child { border-right: 0; }
+.modes button .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+.modes button[aria-pressed="true"] { background: var(--c); color: var(--chip-fg); }
+.modes button[aria-pressed="true"] .dot { background: var(--chip-fg); }
+
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; align-items: start; }
+@media (max-width: 900px) { .main { grid-template-columns: minmax(0, 1fr); } }
+
+.stage { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.scene { position: relative; border-radius: 6px; overflow: hidden; background: #0b0f1a; aspect-ratio: 16 / 10; max-width: 100%; }
+.scene canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.overlay { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); background: rgba(10, 13, 20, .88); color: #e8ecf2; border: 1px solid rgba(255,255,255,.14); border-radius: 6px; padding: 12px 16px; min-width: 240px; max-width: calc(100% - 24px); }
+.overlay h2 { margin: 0 0 6px; font-family: var(--font-display); font-size: 22px; text-transform: uppercase; letter-spacing: .03em; }
+.overlay .ok { color: #7fd89c; } .overlay .ko { color: #ff8f86; }
+.overlay .why { margin: 0 0 8px; color: #b8c0cc; font-size: 13px; }
+.overlay .bd { display: grid; grid-template-columns: auto auto; gap: 2px 14px; font-family: var(--font-mono); font-size: 13px; }
+.overlay .bd span:nth-child(even) { text-align: right; }
+.overlay .jt { font-size: 18px; color: #fff; }
+.hudtag { position: absolute; left: 10px; top: 10px; color: #aab3c2; font-family: var(--font-mono); font-size: 12px; background: rgba(10,13,20,.6); padding: 3px 7px; border-radius: 3px; }
+
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--panel); padding: 7px 12px; border-radius: 5px; font-weight: 500; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); font-weight: 600; }
+.btn[disabled] { opacity: .45; cursor: default; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.seg button { border: 0; background: var(--panel); padding: 6px 9px; border-right: 1px solid var(--line); font-family: var(--font-mono); font-size: 12px; }
+.seg button:last-child { border-right: 0; }
+.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.evo-sc { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--muted); }
+.evo-sc .seg button { font-family: var(--font-body); color: var(--fg); }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.scen { font-family: var(--font-mono); font-size: 13px; min-width: 7.5em; text-align: center; }
+.keys { color: var(--muted); font-size: 12px; }
+kbd { font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; background: var(--panel); }
+
+.touch { display: none; gap: 8px; }
+.touch button { flex: 1; border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 16px 0; font-weight: 600; user-select: none; -webkit-user-select: none; touch-action: none; }
+.touch button.thrust { flex: 2; background: var(--human); color: var(--chip-fg); border-color: var(--human); }
+@media (pointer: coarse), (max-width: 700px) { .touch.show { display: flex; } .keys { display: none; } }
+@media (max-width: 700px) { .scene { aspect-ratio: 1 / 1; } }
+
+aside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.card h3 { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.tele { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
+.tele div { display: flex; flex-direction: column; }
+.tele .k { font-size: 11px; color: var(--muted); }
+.tele .v { font-family: var(--font-mono); font-size: 17px; font-variant-numeric: tabular-nums; }
+.fuel { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.fuel i { display: block; height: 100%; background: var(--human); width: 100%; }
+.jrow { display: grid; grid-template-columns: 1fr auto; font-family: var(--font-mono); font-size: 13px; gap: 3px 10px; }
+.jrow .tot { font-size: 20px; font-weight: 500; }
+.note { color: var(--muted); font-size: 12.5px; line-height: 1.45; margin: 0; }
+.note b { color: var(--fg); font-weight: 600; }
+.kmat { font-family: var(--font-mono); font-size: 11.5px; border-collapse: collapse; width: 100%; }
+.kmat th { color: var(--muted); font-weight: 400; text-align: right; padding: 2px 4px; }
+.kmat tr.ref td, .kmat tr.ref th { color: var(--muted); border-top: 0; font-size: 10.5px; }
+.kmat td { text-align: right; padding: 2px 4px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.kwrap { overflow-x: auto; }
+.name { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.name input { border: 1px solid var(--line); background: var(--bg); border-radius: 4px; padding: 7px 9px; font-size: 14px; }
+
+.train-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.train-stats div { display: flex; flex-direction: column; }
+.train-stats .k { font-size: 11px; color: var(--muted); }
+.train-stats .v { font-family: var(--font-mono); font-size: 15px; font-variant-numeric: tabular-nums; }
+.curve { width: 100%; height: auto; display: block; }
+.curve text { font-family: var(--font-mono); font-size: 9px; fill: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 14px; height: 0; border-top: 2px solid var(--c); display: inline-block; }
+.legend i.dash { border-top-style: dashed; }
+
+.board { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.board li { display: grid; grid-template-columns: 22px auto minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.board li:first-child { border-top: 0; }
+.board .rk { font-family: var(--font-mono); color: var(--muted); font-size: 12px; }
+.chip { font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: 3px; background: var(--c); color: var(--chip-fg); text-transform: uppercase; letter-spacing: .04em; }
+.board .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board .nm small { display: block; color: var(--muted); font-size: 11px; font-family: var(--font-mono); }
+.board .j { font-family: var(--font-mono); font-size: 15px; font-variant-numeric: tabular-nums; text-align: right; }
+.empty { color: var(--muted); font-size: 13px; margin: 0; }
+.tabs { display: flex; gap: 4px; }
+.tabs button { border: 1px solid var(--line); background: transparent; border-radius: 4px; font-size: 11px; padding: 2px 7px; text-transform: none; letter-spacing: 0; color: var(--muted); }
+.tabs button[aria-pressed="true"] { color: var(--fg); border-color: var(--fg); }
+.src { font-size: 11px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app">
+  <header>
+    <div class="brand">
+      <h1>Aterriza la Nave</h1>
+      <p>Taller de control óptimo · humano, LQR, MPC, LQR aprendido y red evolutiva</p>
+    </div>
+    <div class="formula" title="Función de costo">J = <b>combustible</b> + 10·<b>velocidad de impacto</b> + 2·<b>desviación</b></div>
+    <div class="modes" role="group" aria-label="Quién controla la nave">
+      <button id="m-human" data-mode="human" style="--c: var(--human)" aria-pressed="true"><span class="dot"></span>Humano</button>
+      <button id="m-lqr" data-mode="lqr" style="--c: var(--lqr)" aria-pressed="false"><span class="dot"></span>LQR</button>
+      <button id="m-mpc" data-mode="mpc" style="--c: var(--mpc)" aria-pressed="false"><span class="dot"></span>MPC</button>
+      <button id="m-adp" data-mode="adp" style="--c: var(--adp)" aria-pressed="false"><span class="dot"></span>LQR aprendido</button>
+      <button id="m-evo" data-mode="evo" style="--c: var(--evo)" aria-pressed="false"><span class="dot"></span>Red · evolutiva</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <section class="stage">
+      <div class="scene" id="scene">
+        <canvas id="cv" aria-label="Vista del módulo lunar descendiendo hacia la plataforma"></canvas>
+        <div class="overlay" id="result" hidden></div>
+        <div class="hudtag" id="hudtag">Escenario 1 · Humano</div>
+      </div>
+      <div class="touch" id="touch">
+        <button id="t-left" aria-label="Rotar a la izquierda">⟲ Izq.</button>
+        <button id="t-thrust" class="thrust" aria-label="Propulsor">Propulsor</button>
+        <button id="t-right" aria-label="Rotar a la derecha">Der. ⟳</button>
+      </div>
+      <div class="bar">
+        <div class="group">
+          <button class="btn primary" id="launch">Lanzar</button>
+          <button class="btn" id="reset">Reiniciar</button>
+          <div class="seg" role="group" aria-label="Velocidad de reproducción">
+            <button data-speed="1" aria-pressed="true">×1</button>
+            <button data-speed="2" aria-pressed="false">×2</button>
+            <button data-speed="4" aria-pressed="false">×4</button>
+            <button data-speed="16" aria-pressed="false">×16</button>
+          </div>
+        </div>
+        <div class="group">
+          <button class="btn" id="prev" aria-label="Escenario anterior">◀</button>
+          <span class="scen" id="scen">Escenario 1</span>
+          <button class="btn" id="next" aria-label="Escenario siguiente">▶</button>
+        </div>
+        <div class="keys" id="keys"><kbd>↑</kbd> propulsor · <kbd>←</kbd><kbd>→</kbd> rotar · <kbd>Espacio</kbd> lanzar</div>
+      </div>
+      <p class="note">Todos los modos vuelan el <b>mismo escenario</b>, así que sus J se pueden comparar. Las líneas tenues en la escena son los últimos vuelos de cada modo en este escenario.</p>
+    </section>
+
+    <aside>
+      <div class="card">
+        <h3>Telemetría <span id="tstatus" class="mono">en espera</span></h3>
+        <div class="tele">
+          <div><span class="k">Altitud</span><span class="v" id="t-alt">—</span></div>
+          <div><span class="k">Desviación</span><span class="v" id="t-dev">—</span></div>
+          <div><span class="k">Vel. horizontal</span><span class="v" id="t-vx">—</span></div>
+          <div><span class="k">Vel. vertical</span><span class="v" id="t-vy">—</span></div>
+          <div><span class="k">Inclinación</span><span class="v" id="t-th">—</span></div>
+          <div><span class="k">Combustible</span><span class="v" id="t-fuel">—</span></div>
+        </div>
+        <div class="fuel"><i id="fuelbar"></i></div>
+        <div class="jrow">
+          <span>Combustible usado</span><span id="j-f">0.0</span>
+          <span>+ 10 × velocidad</span><span id="j-v">0.0</span>
+          <span>+ 2 × desviación</span><span id="j-d">0.0</span>
+          <span class="tot" id="j-lab">J</span><span class="tot" id="j-t">0.0</span>
+        </div>
+      </div>
+
+      <div class="card" id="card-human">
+        <h3>Tú controlas</h3>
+        <label class="name" for="pname">Tu nombre para la tabla
+          <input id="pname" maxlength="24" placeholder="Ej. Ana" autocomplete="off">
+        </label>
+        <p class="note">Aterriza sobre la plataforma con velocidad vertical menor a 2 m/s, horizontal menor a 1.5 m/s y la nave casi derecha. Cada litro de combustible suma a J.</p>
+      </div>
+
+      <div class="card" id="card-lqr" hidden>
+        <h3>Regulador LQR</h3>
+        <p class="note">Linealiza la nave alrededor del vuelo estacionario y resuelve la <b>ecuación de Riccati</b> para minimizar ∑ xᵀQx + uᵀRu. El control es <b>u = −K x</b>:</p>
+        <div class="kwrap"><table class="kmat" id="kmat"></table></div>
+        <p class="note">Como es lineal, no sabe que el motor tiene un límite; por eso persigue un punto a lo más 15 m de lado y 25 m abajo. Aterriza casi siempre, pero con prudencia: baja lento y gasta combustible flotando.</p>
+      </div>
+
+      <div class="card" id="card-mpc" hidden>
+        <h3>Control predictivo (MPC) <span class="mono" id="mpc-state">listo</span></h3>
+        <div class="evo-sc">
+          <span>Horizonte de predicción</span>
+          <div class="seg" role="group" aria-label="Horizonte de predicción" id="mpc-h">
+            <button data-h="1" aria-pressed="false">1 s</button>
+            <button data-h="2" aria-pressed="false">2 s</button>
+            <button data-h="4" aria-pressed="false">4 s</button>
+            <button data-h="6" aria-pressed="true">6 s</button>
+            <button data-h="10" aria-pressed="false">10 s</button>
+          </div>
+        </div>
+        <label class="chk" for="mpc-show"><input type="checkbox" id="mpc-show" checked> Mostrar los futuros que imagina</label>
+        <div class="train-stats">
+          <div><span class="k">Futuros por decisión</span><span class="v">100</span></div>
+          <div><span class="k">Decide cada</span><span class="v">0.2 s</span></div>
+          <div><span class="k">J predicho</span><span class="v" id="mpc-pred">—</span></div>
+        </div>
+        <p class="note">Cada 0.2 s la nave <b>imagina 100 futuros</b> con su modelo de la física: parte de su plan anterior y le agrega variaciones al azar. Calcula el costo de cada futuro, se queda con un promedio pesado de los mejores, <b>aplica solo el primer tramo</b> y vuelve a planear con lo que realmente pasó.</p>
+        <p class="note">Prueba con <b>1 s</b>: la nave es miope, no ve el suelo a tiempo y se estrella. Con <b>6 s</b> anticipa el frenado, aterriza siempre y suele gastar menos combustible que el LQR. Cada horizonte tiene su propia fila en la tabla.</p>
+      </div>
+
+      <div class="card" id="card-adp" hidden>
+        <h3>LQR aprendido sin modelo <span class="mono" id="adp-state">sin aprender</span></h3>
+        <div class="group">
+          <button class="btn primary" id="learn">Aprender</button>
+          <button class="btn" id="adpreset">Empezar de cero</button>
+        </div>
+        <div class="train-stats">
+          <div><span class="k">Iteración</span><span class="v" id="adp-it">0</span></div>
+          <div><span class="k">Distancia a Riccati</span><span class="v" id="adp-dist">—</span></div>
+          <div><span class="k">J en prueba</span><span class="v" id="adp-j">—</span></div>
+        </div>
+        <div class="kwrap"><table class="kmat" id="kmat-adp"></table></div>
+        <svg class="curve" id="adp-curve" viewBox="0 0 300 150" role="img" aria-label="Distancia entre la K aprendida y la K de Riccati por iteración"></svg>
+        <div class="legend">
+          <span><i style="--c: var(--adp)"></i>Distancia de la K aprendida a la de Riccati</span>
+          <span><i class="dash" style="--c: var(--lqr)"></i>0 % = igual a Riccati</span>
+        </div>
+        <p class="note">La nave <b>no conoce la gravedad ni cómo responde su motor</b>. Empieza con una K ajustada a ojo, que aterriza pero gasta de más. En cada tanda hace 12 vuelos de práctica con un poco de ruido para explorar y guarda cada (estado, acción, costo, estado siguiente).</p>
+        <p class="note">Con mínimos cuadrados ajusta la función de Bellman <b>Q(x,u) = [x;u]ᵀ H [x;u]</b> y mejora su ganancia con <b>K = H<sub>uu</sub>⁻¹ H<sub>ux</sub></b>. Si una K nueva aterriza peor en la práctica, la descarta. Así llega sola a la K que el LQR obtiene resolviendo Riccati con el modelo. <b>Lanzar</b> vuela con la K aprendida hasta ahora.</p>
+      </div>
+
+      <div class="card" id="card-evo" hidden>
+        <h3>Red evolutiva <span class="mono" id="evo-state">generación 0</span></h3>
+        <div class="group">
+          <button class="btn primary" id="evolve">Evolucionar</button>
+          <button class="btn" id="evoreset">Nueva población</button>
+        </div>
+        <div class="evo-sc">
+          <span>Escenario por generación</span>
+          <div class="seg" role="group" aria-label="Escenario de cada generación">
+            <button id="evo-var" aria-pressed="true">Variado</button>
+            <button id="evo-fix" aria-pressed="false">El elegido</button>
+          </div>
+        </div>
+        <div class="train-stats">
+          <div><span class="k">Generación</span><span class="v" id="evo-gen">0</span></div>
+          <div><span class="k">Aterrizaron</span><span class="v" id="evo-landed">—</span></div>
+          <div><span class="k">Mejor J</span><span class="v" id="evo-best">—</span></div>
+        </div>
+        <svg class="curve" id="evo-curve" viewBox="0 0 300 150" role="img" aria-label="Curva de evolución: J del campeón por generación"></svg>
+        <div class="legend">
+          <span><i style="--c: var(--evo)"></i>J del campeón (8 escenarios de prueba)</span>
+          <span><i class="dash" style="--c: var(--lqr)"></i>J del LQR</span>
+        </div>
+        <p class="note">Vuelan <b>30 naves a la vez</b>, cada una con su propia red (6 → 12 → 12 → 2). Cuando todas terminan, las <b>6 con menor J sobreviven</b> y tienen hijos con pequeñas mutaciones en sus pesos. Nadie calcula gradientes: aprende solo de cómo le fue en sus jugadas. Usa ×16 para ver muchas generaciones rápido. <b>Lanzar</b> vuela solo al campeón en el escenario elegido.</p>
+      </div>
+
+      <div class="card">
+        <h3>Tabla de posiciones
+          <span class="tabs" role="group" aria-label="Filtro">
+            <button id="f-scen" aria-pressed="true">Escenario</button>
+            <button id="f-all" aria-pressed="false">Todos</button>
+          </span>
+        </h3>
+        <ol class="board" id="board"></ol>
+        <p class="empty" id="board-empty">Todavía no hay aterrizajes exitosos en este escenario.</p>
+        <span class="src" id="board-src">Menor J = mejor. Solo cuentan aterrizajes exitosos.</span>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+// Motor de "Aterriza la nave": física, costo J, LQR y red neuronal entrenada por
+// retropropagación en el tiempo (el gradiente que viaja hacia atrás es el coestado).
+var engineFactory = function (root) {
+  'use strict';
+
+  // ---------- Parámetros físicos ----------
+  const P = {
+    g: 1.62,        // gravedad lunar (m/s²)
+    TMAX: 4.0,      // aceleración máxima del propulsor principal (m/s²)
+    TAUMAX: 3.0,    // aceleración angular máxima de los propulsores laterales (rad/s²)
+    CDAMP: 2.0,     // amortiguamiento angular
+    DT: 1 / 60,     // paso de simulación
+    FUEL0: 60,      // combustible inicial (unidades de m/s de Δv)
+    FUEL_ROT: 0.15, // costo de combustible por rotar
+    PADW: 8,        // media anchura de la plataforma (m)
+    VY_OK: 2.0, VX_OK: 1.5, TH_OK: 0.3, // límites para un aterrizaje exitoso
+    TMAX_SIM: 60,   // tiempo máximo de vuelo (s)
+  };
+  // Pesos de la función de costo J
+  const W = { fuel: 1, speed: 10, dev: 2 };
+
+  // ---------- Aleatorio con semilla ----------
+  function rng(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // Estado: x (relativo a la plataforma), y (altura), vx, vy, th (ángulo), w (vel. angular)
+  function initialState(seed) {
+    const r = rng(seed);
+    const side = r() < 0.5 ? -1 : 1;
+    return {
+      x: side * (15 + 25 * r()),
+      y: 50 + 15 * r(),
+      vx: -4 + 8 * r(),
+      vy: -3 * r(),
+      th: 0, w: 0,
+      fuel: P.FUEL0, fuelUsed: 0, t: 0,
+      status: 'flying', // flying | landed | crashed
+      reason: '',
+      impactSpeed: 0,
+    };
+  }
+
+  // Un paso de la dinámica (Euler). u = {aT, tau}
+  function step(s, u, dt) {
+    if (s.status !== 'flying') return s;
+    let aT = Math.min(Math.max(u.aT, 0), P.TMAX);
+    let tau = Math.min(Math.max(u.tau, -P.TAUMAX), P.TAUMAX);
+    if (s.fuel <= 0) { aT = 0; tau = 0; }
+    const burn = (aT + P.FUEL_ROT * Math.abs(tau)) * dt;
+    const n = Object.assign({}, s);
+    n.x = s.x + dt * s.vx;
+    n.y = s.y + dt * s.vy;
+    n.vx = s.vx + dt * aT * Math.sin(s.th);
+    n.vy = s.vy + dt * (aT * Math.cos(s.th) - P.g);
+    n.th = s.th + dt * s.w;
+    n.w = s.w + dt * (tau - P.CDAMP * s.w);
+    n.fuel = Math.max(0, s.fuel - burn);
+    n.fuelUsed = s.fuelUsed + Math.min(burn, s.fuel);
+    n.t = s.t + dt;
+    n.aT = aT; n.tau = tau;
+    if (n.y <= 0) {
+      n.y = 0;
+      n.impactSpeed = Math.hypot(n.vx, n.vy);
+      const onPad = Math.abs(n.x) <= P.PADW;
+      const soft = Math.abs(n.vy) <= P.VY_OK && Math.abs(n.vx) <= P.VX_OK && Math.abs(n.th) <= P.TH_OK;
+      if (onPad && soft) { n.status = 'landed'; }
+      else {
+        n.status = 'crashed';
+        n.reason = !onPad ? 'Fuera de la plataforma' :
+          Math.abs(n.th) > P.TH_OK ? 'Llegó inclinada' : 'Impacto demasiado fuerte';
+      }
+    } else if (Math.abs(n.x) > 110 || n.y > 140) {
+      n.status = 'crashed'; n.reason = 'Se perdió en el espacio'; n.impactSpeed = Math.hypot(n.vx, n.vy);
+    } else if (n.t >= P.TMAX_SIM) {
+      n.status = 'crashed'; n.reason = 'Se acabó el tiempo'; n.impactSpeed = Math.hypot(n.vx, n.vy);
+    }
+    return n;
+  }
+
+  // Costo J = combustible + 10·velocidad de impacto + 2·desviación
+  function cost(s) {
+    const fuel = W.fuel * s.fuelUsed;
+    const speed = W.speed * (s.status === 'flying' ? Math.hypot(s.vx, s.vy) : s.impactSpeed);
+    const dev = W.dev * Math.abs(s.x);
+    return { J: fuel + speed + dev, fuel, speed, dev };
+  }
+
+  // ---------- Álgebra lineal mínima ----------
+  const zeros = (r, c) => Array.from({ length: r }, () => new Array(c).fill(0));
+  const eye = (n) => { const m = zeros(n, n); for (let i = 0; i < n; i++) m[i][i] = 1; return m; };
+  function mul(A, B) {
+    const r = A.length, c = B[0].length, k = B.length, M = zeros(r, c);
+    for (let i = 0; i < r; i++) for (let j = 0; j < c; j++) { let v = 0; for (let l = 0; l < k; l++) v += A[i][l] * B[l][j]; M[i][j] = v; }
+    return M;
+  }
+  const T = (A) => A[0].map((_, j) => A.map((row) => row[j]));
+  const add = (A, B) => A.map((row, i) => row.map((v, j) => v + B[i][j]));
+  const sub = (A, B) => A.map((row, i) => row.map((v, j) => v - B[i][j]));
+  function inv2(M) {
+    const [[a, b], [c, d]] = M, det = a * d - b * c;
+    return [[d / det, -b / det], [-c / det, a / det]];
+  }
+
+  // ---------- LQR ----------
+  // Linealización alrededor del vuelo estacionario (aT = g, th = 0):
+  // x' = vx, y' = vy, vx' = g·th, vy' = u1, th' = w, w' = -c·w + u2
+  const LQR_DEFAULT = { Q: [0.05, 0.05, 0.3, 1.0, 2.0, 0.5], R: [1.0, 0.5] };
+  function lqrGain(Qd, Rd) {
+    const dt = P.DT, c = P.CDAMP;
+    const Ac = zeros(6, 6);
+    Ac[0][2] = 1; Ac[1][3] = 1; Ac[2][4] = P.g; Ac[4][5] = 1; Ac[5][5] = -c;
+    const Bc = zeros(6, 2); Bc[3][0] = 1; Bc[5][1] = 1;
+    const A = add(eye(6), Ac.map((r) => r.map((v) => v * dt)));
+    const B = Bc.map((r) => r.map((v) => v * dt));
+    const Q = zeros(6, 6); Qd.forEach((v, i) => (Q[i][i] = v));
+    const R = zeros(2, 2); Rd.forEach((v, i) => (R[i][i] = v));
+    let Pm = Q.map((r) => r.slice());
+    const At = T(A), Bt = T(B);
+    for (let it = 0; it < 20000; it++) {
+      const PB = mul(Pm, B);
+      const K = mul(inv2(add(R, mul(Bt, PB))), mul(Bt, mul(Pm, A)));
+      const Pn = add(Q, sub(mul(At, mul(Pm, A)), mul(mul(At, PB), K)));
+      let diff = 0;
+      for (let i = 0; i < 6; i++) for (let j = 0; j < 6; j++) diff = Math.max(diff, Math.abs(Pn[i][j] - Pm[i][j]));
+      Pm = Pn;
+      if (diff < 1e-9) break;
+    }
+    return mul(inv2(add(R, mul(Bt, mul(Pm, B)))), mul(Bt, mul(Pm, A)));
+  }
+  const Y_REF = -0.6; // referencia un poco bajo el suelo: así la nave sí toca en vez de acercarse asintóticamente
+  // El LQR es lineal y no sabe que el motor se satura, así que recortamos el error que "ve":
+  // desde lejos persigue un punto a lo más 15 m de lado y 25 m abajo (gobernador de referencia).
+  const CLIP_X = 15, CLIP_Y = 25;
+  function lqrControl(K, s) {
+    const ex = Math.max(-CLIP_X, Math.min(CLIP_X, s.x)), ey = Math.min(s.y, CLIP_Y);
+    const e = [ex, ey - Y_REF, s.vx, s.vy, s.th, s.w];
+    let u1 = 0, u2 = 0;
+    for (let j = 0; j < 6; j++) { u1 -= K[0][j] * e[j]; u2 -= K[1][j] * e[j]; }
+    return { aT: P.g + u1, tau: u2 };
+  }
+
+  // ---------- Red neuronal (MLP 6 → H → H → 2) ----------
+  const NORM = [1 / 30, 1 / 40, 1 / 5, 1 / 5, 1 / 0.5, 1 / 1];
+  function createNet(H, seed) {
+    const r = rng(seed || 7);
+    const gauss = () => { let u = 0, v = 0; while (u === 0) u = r(); v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+    const layer = (nin, nout, scale) => {
+      const Wt = new Float64Array(nin * nout);
+      for (let i = 0; i < Wt.length; i++) Wt[i] = gauss() * scale / Math.sqrt(nin);
+      return { nin, nout, W: Wt, b: new Float64Array(nout) };
+    };
+    const net = { H, L: [layer(6, H, 1), layer(H, H, 1), layer(H, 2, 0.1)] };
+    net.L[2].b[0] = Math.log((P.g / P.TMAX) / (1 - P.g / P.TMAX)); // empieza cerca de flotar
+    return net;
+  }
+  function cloneNet(net) {
+    return { H: net.H, L: net.L.map((l) => ({ nin: l.nin, nout: l.nout, W: new Float64Array(l.W), b: new Float64Array(l.b) })) };
+  }
+  // Propagación hacia adelante; guarda activaciones si se pide cache
+  function forward(net, s, cache) {
+    const inp = new Float64Array(6);
+    inp[0] = s.x * NORM[0]; inp[1] = s.y * NORM[1]; inp[2] = s.vx * NORM[2];
+    inp[3] = s.vy * NORM[3]; inp[4] = s.th * NORM[4]; inp[5] = s.w * NORM[5];
+    let a = inp; const acts = [inp];
+    for (let li = 0; li < 3; li++) {
+      const l = net.L[li], out = new Float64Array(l.nout);
+      for (let o = 0; o < l.nout; o++) {
+        let v = l.b[o]; const off = o * l.nin;
+        for (let i = 0; i < l.nin; i++) v += l.W[off + i] * a[i];
+        out[o] = li < 2 ? Math.tanh(v) : v;
+      }
+      a = out; acts.push(out);
+    }
+    const sg = 1 / (1 + Math.exp(-a[0])), th = Math.tanh(a[1]);
+    if (cache) { cache.acts = acts; cache.sg = sg; cache.tanh = th; }
+    return { aT: P.TMAX * sg, tau: P.TAUMAX * th };
+  }
+  const nnControl = (net, s) => forward(net, s, null);
+
+  // Retropropaga dL/d(salida) = [gA, gTau] por la red. Acumula gradientes de pesos
+  // y devuelve dL/d(estado) (la contribución de la política al coestado).
+  function backward(net, cache, gA, gTau, grads) {
+    const acts = cache.acts;
+    let delta = new Float64Array(2);
+    delta[0] = gA * P.TMAX * cache.sg * (1 - cache.sg);
+    delta[1] = gTau * P.TAUMAX * (1 - cache.tanh * cache.tanh);
+    for (let li = 2; li >= 0; li--) {
+      const l = net.L[li], g = grads[li], ain = acts[li];
+      const dIn = new Float64Array(l.nin);
+      for (let o = 0; o < l.nout; o++) {
+        const d = delta[o]; if (d === 0) continue;
+        g.b[o] += d; const off = o * l.nin;
+        for (let i = 0; i < l.nin; i++) { g.W[off + i] += d * ain[i]; dIn[i] += l.W[off + i] * d; }
+      }
+      if (li > 0) { for (let i = 0; i < l.nin; i++) dIn[i] *= 1 - ain[i] * ain[i]; }
+      delta = dIn;
+    }
+    const gs = new Float64Array(6);
+    for (let i = 0; i < 6; i++) gs[i] = delta[i] * NORM[i];
+    return gs;
+  }
+  const zeroGrads = (net) => net.L.map((l) => ({ W: new Float64Array(l.W.length), b: new Float64Array(l.b.length) }));
+
+  // Costo terminal Φ(s) en el contacto y su gradiente. Imita a J (10·rapidez + 2·desviación)
+  // más penalizaciones suaves si el contacto rompe los límites de un aterrizaje seguro.
+  function terminal(s) {
+    const [x, , vx, vy, th] = s, g = new Float64Array(6);
+    const sp = Math.sqrt(vx * vx + vy * vy + 0.01), dv = Math.sqrt(x * x + 0.25);
+    let L = W.speed * sp + W.dev * dv + 5 * th * th;
+    g[0] = W.dev * x / dv; g[2] = W.speed * vx / sp; g[3] = W.speed * vy / sp; g[4] = 10 * th;
+    const h = (v, lim, k, i) => { const e = Math.abs(v) - lim; if (e > 0) { L += k * e * e; g[i] += 2 * k * e * Math.sign(v); } };
+    h(vy, P.VY_OK * 0.6, 40, 3); h(vx, P.VX_OK * 0.6, 40, 2); h(th, P.TH_OK * 0.6, 200, 4); h(x, P.PADW * 0.6, 5, 0);
+    return { L, g };
+  }
+  const dyn = (s, u, dt) => [
+    s[0] + dt * s[2], s[1] + dt * s[3],
+    s[2] + dt * u.aT * Math.sin(s[4]), s[3] + dt * (u.aT * Math.cos(s[4]) - P.g),
+    s[4] + dt * s[5], s[5] + dt * (u.tau - P.CDAMP * s[5]),
+  ];
+
+  // Un episodio de entrenamiento: simula, calcula el costo y hace retropropagación en el tiempo (BPTT).
+  // Costo = Σ combustible·dt + Φ(estado en el contacto). El instante de contacto se interpola dentro del
+  // último paso, así el gradiente "sabe" que aterrizar antes ahorra combustible (transversalidad).
+  function trainEpisode(net, s0, grads, dt) {
+    const Hmax = Math.round(40 / dt);
+    const S = [], C = [], U = [];
+    let s = [s0.x, s0.y, s0.vx, s0.vy, s0.th, s0.w];
+    let L = 0, touched = false;
+    for (let t = 0; t < Hmax; t++) {
+      const cache = {};
+      const u = forward(net, { x: s[0], y: s[1], vx: s[2], vy: s[3], th: s[4], w: s[5] }, cache);
+      S.push(s); C.push(cache); U.push(u);
+      s = dyn(s, u, dt);
+      if (s[1] <= 0) { touched = true; break; }
+    }
+    const N = S.length, run = (u) => W.fuel * u.aT + 0.02 * u.tau * u.tau;
+    for (let t = 0; t < N - (touched ? 1 : 0); t++) L += dt * run(U[t]);
+    let lam = new Float64Array(6), extraP = null, alpha = 1;
+    if (touched) {
+      const sp = S[N - 1], a = sp[1], b = s[1];
+      alpha = a / (a - b);
+      const d = s.map((v, i) => v - sp[i]);
+      const sc = sp.map((v, i) => v + alpha * d[i]);
+      const ph = terminal(sc);
+      const r = dt * run(U[N - 1]);
+      L += alpha * r + ph.L;
+      let K = r; for (let i = 0; i < 6; i++) K += ph.g[i] * d[i];
+      const dAa = -b / ((a - b) * (a - b)), dAb = a / ((a - b) * (a - b));
+      for (let i = 0; i < 6; i++) lam[i] = alpha * ph.g[i];
+      lam[1] += K * dAb;
+      extraP = new Float64Array(6);
+      for (let i = 0; i < 6; i++) extraP[i] = (1 - alpha) * ph.g[i];
+      extraP[1] += K * dAa;
+    } else {
+      const [x, y, vx, vy] = s;
+      L += 3 * y + W.speed * Math.hypot(vx, vy) + W.dev * Math.abs(x);
+      lam[1] = 3;
+      const sp = Math.hypot(vx, vy) + 1e-6; lam[2] = W.speed * vx / sp; lam[3] = W.speed * vy / sp;
+      lam[0] = W.dev * Math.sign(x);
+    }
+    // Pasada hacia atrás: λ_t = ∂c/∂s + (∂f/∂s)ᵀ λ_{t+1} + (∂π/∂s)ᵀ [∂c/∂u + (∂f/∂u)ᵀ λ_{t+1}]
+    // λ es el coestado de Pontryagin: cuánto cambia el costo total si empujas el estado.
+    let l = lam;
+    for (let t = N - 1; t >= 0; t--) {
+      const st = S[t], u = U[t], c = Math.cos(st[4]), sn = Math.sin(st[4]);
+      const w = (touched && t === N - 1) ? alpha : 1;
+      const gA = w * dt * W.fuel + dt * sn * l[2] + dt * c * l[3];
+      const gTau = w * dt * 0.04 * u.tau + dt * l[5];
+      const gs = backward(net, C[t], gA, gTau, grads);
+      const nl = new Float64Array(6);
+      nl[0] = l[0] + gs[0];
+      nl[1] = l[1] + gs[1];
+      nl[2] = dt * l[0] + l[2] + gs[2];
+      nl[3] = dt * l[1] + l[3] + gs[3];
+      nl[4] = l[4] + dt * u.aT * c * l[2] - dt * u.aT * sn * l[3] + gs[4];
+      nl[5] = dt * l[4] + (1 - dt * P.CDAMP) * l[5] + gs[5];
+      if (touched && t === N - 1) for (let i = 0; i < 6; i++) nl[i] += extraP[i];
+      l = nl;
+    }
+    return L;
+  }
+
+  // Optimizador Adam
+  function createTrainer(net, opts) {
+    opts = Object.assign({ lr: 3e-3, batch: 12, dt: 1 / 30, clip: 5 }, opts || {});
+    const m = zeroGrads(net), v = zeroGrads(net);
+    let k = 0, seedCounter = 100000;
+    return {
+      opts,
+      iteration: () => k,
+      // Una iteración: lote de escenarios aleatorios → gradiente promedio → paso de Adam
+      step() {
+        const grads = zeroGrads(net);
+        let Ltot = 0;
+        for (let b = 0; b < opts.batch; b++) Ltot += trainEpisode(net, initialState(seedCounter++), grads, opts.dt);
+        let norm = 0;
+        grads.forEach((g) => { g.W.forEach((x) => (norm += x * x)); g.b.forEach((x) => (norm += x * x)); });
+        norm = Math.sqrt(norm) / opts.batch;
+        const scale = (norm > opts.clip ? opts.clip / norm : 1) / opts.batch;
+        k++;
+        const b1 = 0.9, b2 = 0.999, eps = 1e-8, lr = opts.lr;
+        const c1 = 1 - Math.pow(b1, k), c2 = 1 - Math.pow(b2, k);
+        net.L.forEach((layer, li) => {
+          ['W', 'b'].forEach((key) => {
+            const p = layer[key], g = grads[li][key], mm = m[li][key], vv = v[li][key];
+            for (let i = 0; i < p.length; i++) {
+              const gi = g[i] * scale;
+              mm[i] = b1 * mm[i] + (1 - b1) * gi;
+              vv[i] = b2 * vv[i] + (1 - b2) * gi * gi;
+              p[i] -= lr * (mm[i] / c1) / (Math.sqrt(vv[i] / c2) + eps);
+            }
+          });
+        });
+        return { loss: Ltot / opts.batch, gradNorm: norm };
+      },
+    };
+  }
+
+  // Simula un vuelo completo con un controlador
+  function rollout(ctrl, seed) {
+    let s = initialState(seed);
+    const path = [s];
+    while (s.status === 'flying') { s = step(s, ctrl(s), P.DT); path.push(s); }
+    return { final: s, path };
+  }
+  // Evalúa un controlador en un conjunto fijo de escenarios con la física real
+  const EVAL_SEEDS = [11, 22, 33, 44, 55, 66, 77, 88];
+  function evaluate(ctrl) {
+    let Jsum = 0, ok = 0;
+    EVAL_SEEDS.forEach((sd) => { const f = rollout(ctrl, sd).final; Jsum += cost(f).J; if (f.status === 'landed') ok++; });
+    return { J: Jsum / EVAL_SEEDS.length, success: ok / EVAL_SEEDS.length };
+  }
+
+  const api = { P, W, rng, initialState, step, cost, lqrGain, lqrControl, LQR_DEFAULT, createNet, cloneNet, nnControl, createTrainer, rollout, evaluate, EVAL_SEEDS };
+  root.Engine = api;
+  return api;
+};
+
+</script>
+<script>
+// LQR aprendido sin modelo: Q-learning con iteración de política (Bradtke, Ydstie y Barto, 1994).
+// La nave NO usa A ni B. Solo ve estados, acciones y costos de sus propios vuelos.
+(function (root) {
+  'use strict';
+  function make(E) {
+    const P = E.P;
+    const n = 6, m = 2, nz = n + m, NP = (nz * (nz + 1)) / 2;
+    const DELTA = 0.1, SUB = Math.round(DELTA / P.DT); // decide cada 0.1 s
+    const Qw = E.LQR_DEFAULT.Q, Rw = E.LQR_DEFAULT.R;
+    const Y_REF = -0.6, CLIP_X = 15, CLIP_Y = 25;
+
+    // ---- álgebra densa ----
+    const zeros = (r, c) => Array.from({ length: r }, () => new Array(c).fill(0));
+    function mul(A, B) { const r = A.length, c = B[0].length, k = B.length, M = zeros(r, c); for (let i = 0; i < r; i++) for (let l = 0; l < k; l++) { const a = A[i][l]; if (a) for (let j = 0; j < c; j++) M[i][j] += a * B[l][j]; } return M; }
+    const T = (A) => A[0].map((_, j) => A.map((r) => r[j]));
+    const add = (A, B) => A.map((r, i) => r.map((v, j) => v + B[i][j]));
+    const sub = (A, B) => A.map((r, i) => r.map((v, j) => v - B[i][j]));
+    function solve(M, b) { // Gauss con pivoteo; M cuadrada, b vector o matriz
+      const N = M.length, A = M.map((r) => r.slice()), X = b.map((r) => (Array.isArray(r) ? r.slice() : [r]));
+      for (let c = 0; c < N; c++) {
+        let p = c; for (let r = c + 1; r < N; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+        [A[c], A[p]] = [A[p], A[c]]; [X[c], X[p]] = [X[p], X[c]];
+        const d = A[c][c]; if (Math.abs(d) < 1e-14) return null;
+        for (let r = 0; r < N; r++) if (r !== c) { const f = A[r][c] / d; if (f) { for (let k = c; k < N; k++) A[r][k] -= f * A[c][k]; for (let k = 0; k < X[0].length; k++) X[r][k] -= f * X[c][k]; } }
+      }
+      return X.map((r, i) => r.map((v) => v / A[i][i]));
+    }
+
+    // ---- Solo para comparar: el K "de libro", resolviendo Riccati con el modelo ----
+    function modelGain(Qd, Rd) {
+      const Ac = zeros(n, n); Ac[0][2] = 1; Ac[1][3] = 1; Ac[2][4] = P.g; Ac[4][5] = 1; Ac[5][5] = -P.CDAMP;
+      const Bc = zeros(n, m); Bc[3][0] = 1; Bc[5][1] = 1;
+      let A1 = zeros(n, n); for (let i = 0; i < n; i++) { A1[i][i] = 1; for (let j = 0; j < n; j++) A1[i][j] += P.DT * Ac[i][j]; }
+      const B1 = Bc.map((r) => r.map((v) => v * P.DT));
+      let A = A1, B = B1; // retén de orden cero durante SUB pasos
+      for (let s = 1; s < SUB; s++) { B = add(mul(A1, B), B1); A = mul(A1, A); }
+      const Q = zeros(n, n); Qd.forEach((v, i) => (Q[i][i] = v * DELTA));
+      const R = zeros(m, m); Rd.forEach((v, i) => (R[i][i] = v * DELTA));
+      let Pm = Q.map((r) => r.slice());
+      for (let it = 0; it < 5000; it++) {
+        const BtP = mul(T(B), Pm), K = solve(add(R, mul(BtP, B)), mul(BtP, A));
+        const Pn = add(Q, sub(mul(T(A), mul(Pm, A)), mul(mul(T(A), mul(Pm, B)), K)));
+        let d = 0; for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) d = Math.max(d, Math.abs(Pn[i][j] - Pm[i][j]));
+        Pm = Pn; if (d < 1e-10) break;
+      }
+      const BtP = mul(T(B), Pm);
+      return solve(add(R, mul(BtP, B)), mul(BtP, A));
+    }
+    const K_STAR = modelGain(Qw, Rw);
+    // Ganancia inicial: estable pero torpe (como la ajustaría alguien "a ojo")
+    const K_INIT = root.QKINIT || [
+      [0, 0.1, 0, 0.7, 0, 0],
+      [0.1, 0, 0.35, 0, 1.6, 0.6],
+    ];
+
+    // Error que ve el controlador (con el mismo recorte que el LQR del juego)
+    function err(s) {
+      return [Math.max(-CLIP_X, Math.min(CLIP_X, s.x)), Math.min(s.y, CLIP_Y) - Y_REF, s.vx, s.vy, s.th, s.w];
+    }
+    const inLinearZone = (s) => Math.abs(s.x) < CLIP_X && s.y < CLIP_Y && Math.abs(s.th) < (root.QTH || 0.25);
+    function act(K, e) { const u = [0, 0]; for (let i = 0; i < m; i++) for (let j = 0; j < n; j++) u[i] -= K[i][j] * e[j]; return u; }
+    // compensa la inclinación para que la aceleración vertical sea la que pide el control
+    const toCmd = (u, th) => ({ aT: (P.g + u[0]) / Math.max(0.5, Math.cos(th || 0)), tau: u[1] });
+    const saturated = (u) => P.g + u[0] < 0 || P.g + u[0] > P.TMAX || Math.abs(u[1]) > P.TAUMAX;
+    function stageCost(e, u) { let c = 0; for (let i = 0; i < n; i++) c += Qw[i] * e[i] * e[i]; for (let i = 0; i < m; i++) c += Rw[i] * u[i] * u[i]; return c * DELTA; }
+    // Base cuadrática: z = [e; u], φ(z) = términos z_i z_j (i ≤ j)
+    function phi(z) { const f = new Array(NP); let k = 0; for (let i = 0; i < nz; i++) for (let j = i; j < nz; j++) f[k++] = (i === j ? 1 : 2) * z[i] * z[j]; return f; }
+    function toH(h) { const H = zeros(nz, nz); let k = 0; for (let i = 0; i < nz; i++) for (let j = i; j < nz; j++) { H[i][j] = H[j][i] = h[k++]; } return H; }
+
+    // Vuelos de práctica: empiezan cerca de la plataforma, donde la nave se comporta casi lineal
+    function practiceState(seed) {
+      const r = E.rng(seed);
+      const s = E.initialState(seed);
+      s.x = -10 + 20 * r(); s.y = 12 + 10 * r(); s.vx = -1.5 + 3 * r(); s.vy = -1 + 1.5 * r();
+      s.th = -0.1 + 0.2 * r(); s.w = 0;
+      return s;
+    }
+    function createLearner(seed) {
+      const r = E.rng(seed || 99);
+      const gauss = () => { let u = 0; while (!u) u = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * r()); };
+      const L = {
+        K: K_INIT.map((row) => row.slice()), iteration: 0, data: [], history: [],
+        lastLanded: -1, Kprev: null, noise: [0.35, 0.6], step: +(root.QSTEP || 0.5), maxData: +(root.QMAX||6000), K_STAR, DELTA, SUB,
+        // Controlador para un vuelo de aprendizaje: mantiene la acción SUB pasos (0.1 s)
+        // y registra (e, u, e') cuando la nave está en la zona donde el modelo lineal aplica.
+        flightController(explore) {
+          let k = 0, cur = null, prev = null;
+          return (s) => {
+            if (k % SUB === 0) {
+              const e = err(s);
+              if (prev && inLinearZone(s) && inLinearZone(prev.s) && !prev.sat && s.status === 'flying') L.data.push({ e: prev.e, u: prev.u, e2: e });
+              const u = act(L.K, e);
+              if (explore) { u[0] += L.noise[0] * gauss(); u[1] += L.noise[1] * gauss(); }
+              prev = { e, u, s, sat: saturated(u) };
+              cur = toCmd(u, s.th);
+            }
+            k++;
+            return cur;
+          };
+        },
+        // Evaluación de la política (mínimos cuadrados sobre la ecuación de Bellman) + mejora
+        update() {
+          const D = L.data;
+          if (D.length < NP * 2) return { ok: false, reason: 'faltan datos', samples: D.length };
+          const M = zeros(NP, NP), b = new Array(NP).fill(0);
+          for (const d of D) {
+            const z = d.e.concat(d.u), u2 = act(L.K, d.e2), z2 = d.e2.concat(u2);
+            const f1 = phi(z), f2 = phi(z2), row = f1.map((v, i) => v - f2[i]), c = stageCost(d.e, d.u);
+            for (let i = 0; i < NP; i++) { b[i] += row[i] * c; for (let j = 0; j < NP; j++) M[i][j] += row[i] * row[j]; }
+          }
+          for (let i = 0; i < NP; i++) M[i][i] += 1e-6;
+          const h = solve(M, b); if (!h) return { ok: false, reason: 'sistema singular' };
+          const H = toH(h.map((x) => x[0]));
+          const Huu = [[H[6][6], H[6][7]], [H[7][6], H[7][7]]];
+          const Hux = [H[6].slice(0, 6), H[7].slice(0, 6)];
+          if (!(Huu[0][0] > 0 && Huu[0][0] * Huu[1][1] - Huu[0][1] * Huu[1][0] > 0)) return { ok: false, reason: 'H_uu no es definida positiva' };
+          const Knew = solve(Huu, Hux);
+          if (!Knew || Knew.some((row) => row.some((v) => !isFinite(v)))) return { ok: false, reason: 'K inválida' };
+          const a = L.step;
+          L.Kprev = L.K.map((row) => row.slice());
+          L.K = L.K.map((row, i) => row.map((v, j) => v + a * (Knew[i][j] - v)));
+          L.iteration++;
+          if (L.data.length > L.maxData) L.data = L.data.slice(-L.maxData); // off-policy: los vuelos viejos siguen sirviendo
+          const dist = L.distance();
+          L.history.push({ it: L.iteration, dist });
+          return { ok: true, dist };
+        },
+        // Tras cada tanda de vuelos de práctica: si la K nueva aterrizó claramente peor que la anterior,
+        // se descarta (mejora segura basada solo en lo observado); si no, se actualiza.
+        batchDone(landed) {
+          if (L.Kprev && landed < L.lastLanded - 1) {
+            L.K = L.Kprev; L.Kprev = null; L.lastLanded = -1;
+            L.history.push({ it: L.iteration, dist: L.distance(), reverted: true });
+            return { action: 'revert' };
+          }
+          L.lastLanded = landed;
+          const r = L.update();
+          return Object.assign({ action: r.ok ? 'update' : 'wait' }, r);
+        },
+        distance() {
+          let num = 0, den = 0;
+          for (let i = 0; i < m; i++) for (let j = 0; j < n; j++) { num += (L.K[i][j] - K_STAR[i][j]) ** 2; den += K_STAR[i][j] ** 2; }
+          return Math.sqrt(num / den);
+        },
+      };
+      L.history.push({ it: 0, dist: L.distance() });
+      return L;
+    }
+    // Controlador sin exploración para usar la K aprendida (también retén de 0.1 s)
+    function playController(K) {
+      let k = 0, cur = null;
+      return (s) => { if (k % SUB === 0) cur = toCmd(act(K, err(s)), s.th); k++; return cur; };
+    }
+    return { createLearner, playController, practiceState, K_STAR, K_INIT, DELTA };
+  }
+  if (typeof module !== 'undefined' && module.exports) module.exports = make; else root.makeQLearn = make;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+// Control predictivo (MPC) por muestreo: en cada replanificación la nave imagina muchos futuros
+// con su modelo, elige/promedia los de menor costo (MPPI), aplica el primer tramo y repite.
+(function (root) {
+  'use strict';
+  function make(E) {
+    const P = E.P, W = E.W;
+    function createMPC(opts) {
+      const o = Object.assign({ horizon: 6, block: 0.2, dtm: 0.1, samples: 100, lambda: 2, sigA: 0.9, sigT: 1.2, seed: 1 }, opts || {});
+      const r = E.rng(o.seed);
+      const gauss = () => { let u = 0; while (!u) u = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * r()); };
+      const clampA = (a) => Math.min(Math.max(a, 0), P.TMAX), clampT = (t) => Math.min(Math.max(t, -P.TAUMAX), P.TAUMAX);
+      let N = Math.max(1, Math.round(o.horizon / o.block));
+      let U = []; for (let i = 0; i < N; i++) U.push([P.g, 0]);
+      const SUB = Math.round(o.block / P.DT), MSUB = Math.round(o.block / o.dtm);
+      let k = 0, cur = { aT: P.g, tau: 0 };
+      const plan = { samples: [], chosen: [], best: null };
+
+      // Simula una secuencia con el modelo y devuelve su costo (y la trayectoria si se pide)
+      function simulate(s0, seq, keepPath) {
+        let x = s0.x, y = s0.y, vx = s0.vx, vy = s0.vy, th = s0.th, w = s0.w, fuel = s0.fuel;
+        let L = 0; const path = keepPath ? [[x, y]] : null;
+        for (let i = 0; i < seq.length; i++) {
+          let aT = seq[i][0], tau = seq[i][1];
+          for (let j = 0; j < MSUB; j++) {
+            if (fuel <= 0) { aT = 0; tau = 0; }
+            const dt = o.dtm;
+            fuel -= (aT + P.FUEL_ROT * Math.abs(tau)) * dt;
+            L += W.fuel * aT * dt + 0.02 * tau * tau * dt;
+            const nx = x + dt * vx, ny = y + dt * vy;
+            vx += dt * aT * Math.sin(th); vy += dt * (aT * Math.cos(th) - P.g);
+            th += dt * w; w += dt * (tau - P.CDAMP * w);
+            x = nx; y = ny;
+            if (y <= 0) {
+              // contacto: costo del aterrizaje + castigos si rompe los límites
+              const sp = Math.hypot(vx, vy);
+              L += W.speed * sp + W.dev * Math.abs(x) + 5 * th * th;
+              const e1 = Math.abs(vy) - P.VY_OK * 0.7, e2 = Math.abs(vx) - P.VX_OK * 0.7, e3 = Math.abs(th) - P.TH_OK * 0.6, e4 = Math.abs(x) - P.PADW * 0.7;
+              if (e1 > 0) L += 60 + 60 * e1; if (e2 > 0) L += 60 + 60 * e2; if (e3 > 0) L += 60 + 300 * e3; if (e4 > 0) L += 60 + 10 * e4;
+              if (keepPath) path.push([x, 0]);
+              return { L, path };
+            }
+          }
+          if (keepPath) path.push([x, y]);
+        }
+        // sigue en el aire al final del horizonte: estimación del costo restante
+        L += o.terminal(x, y, vx, vy, th);
+        return { L, path };
+      }
+      o.terminal = o.terminal || ((x, y, vx, vy, th) => 2 * Math.abs(x) + W.speed * Math.hypot(vx, vy) * 0.5 + 0.6 * y + 5 * th * th);
+
+      function replan(s) {
+        // desplaza el plan anterior un tramo (arranque en caliente)
+        U.shift(); U.push(U.length ? U[U.length - 1].slice() : [P.g, 0]);
+        const cand = [], costs = [];
+        for (let c = 0; c < o.samples; c++) {
+          let seq;
+          if (c === 0) seq = U.map((u) => u.slice());
+          else if (c === 1) seq = U.map(() => [P.g, 0]);
+          else if (c === 2) seq = U.map(() => [0, 0]);
+          else seq = U.map((u) => [clampA(u[0] + o.sigA * gauss()), clampT(u[1] + o.sigT * gauss())]);
+          cand.push(seq); costs.push(simulate(s, seq, false).L);
+        }
+        const min = Math.min(...costs);
+        const wts = costs.map((c) => Math.exp(-(c - min) / o.lambda)), ws = wts.reduce((a, b) => a + b, 0);
+        const avg = U.map((_, i) => [0, 1].map((d) => cand.reduce((acc, seq, c) => acc + wts[c] * seq[i][d], 0) / ws));
+        const avgCost = simulate(s, avg, false).L, bi = costs.indexOf(min);
+        U = avgCost <= min ? avg : cand[bi].map((u) => u.slice());
+        // para dibujar: unas cuantas muestras y el plan elegido
+        plan.samples = [];
+        for (let c = 3; c < Math.min(cand.length, 3 + (o.drawSamples || 24)); c++) plan.samples.push(simulate(s, cand[c], true).path);
+        plan.chosen = simulate(s, U, true).path;
+        plan.best = Math.min(avgCost, min);
+      }
+      const ctrl = (s) => {
+        if (k % SUB === 0) { replan(s); cur = { aT: U[0][0], tau: U[0][1] }; }
+        k++;
+        return cur;
+      };
+      ctrl.plan = plan;
+      ctrl.opts = o;
+      return ctrl;
+    }
+    return { createMPC };
+  }
+  if (typeof module !== 'undefined' && module.exports) module.exports = make; else root.makeMPC = make;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+(function () {
+  'use strict';
+  const E = engineFactory(window);
+  const P = E.P;
+  const $ = (id) => document.getElementById(id);
+  const MODE_LABEL = { human: 'Humano', lqr: 'LQR', nn: 'Red por gradiente', adp: 'LQR aprendido', mpc: 'MPC', evo: 'Red evolutiva' };
+  const MODE_COLOR = { human: '#f08a4b', lqr: '#6aa9e6', nn: '#a88bf0', adp: '#a88bf0', mpc: '#f07ab4', evo: '#4fc1b5' };
+  const seedOf = (n) => n * 7919 + 13;
+
+  const S = {
+    mode: 'human', scenario: 1, speed: 1,
+    sim: null, running: false, done: false, path: [],
+    keys: { up: false, left: false, right: false },
+    ghosts: {},           // `${scenario}:${mode}` -> path
+    K: E.lqrGain(E.LQR_DEFAULT.Q, E.LQR_DEFAULT.R),
+    flyNet: null,         // red usada en el vuelo en curso
+    bestNet: null, bestIter: 0, curNet: null,
+    training: false, iter: 0, curve: [], lastEval: null,
+    filter: 'scen',
+    scores: [], shared: false, db: null,
+  };
+  const lqrEval = E.evaluate((s) => E.lqrControl(S.K, s));
+
+  // ---------- Tabla K ----------
+  (function renderK() {
+    const cols = ['x', 'y', 'vx', 'vy', 'θ', 'ω'];
+    const rows = ['empuje', 'giro'];
+    let h = '<tr><th></th>' + cols.map((c) => `<th>${c}</th>`).join('') + '</tr>';
+    S.K.forEach((r, i) => { h += `<tr><th>${rows[i]}</th>` + r.map((v) => `<td>${Math.abs(v) < 5e-4 ? '0' : v.toFixed(2)}</td>`).join('') + '</tr>'; });
+    $('kmat').innerHTML = h;
+  })();
+
+  // ---------- Canvas ----------
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  let W = 0, H = 0, DPR = 1;
+  const stars = Array.from({ length: 140 }, (_, i) => { const r = E.rng(i + 1); return [r(), r() * 0.8, r() * 1.2 + 0.2]; });
+  function resize() {
+    const r = cv.getBoundingClientRect();
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = r.width; H = r.height;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  }
+  new ResizeObserver(resize).observe(cv);
+  // Vista: 130 m de ancho centrados en la plataforma, suelo a 12% del borde inferior
+  function view() {
+    const sc = Math.min(W / 130, (H * 0.86) / 72);
+    return { sc, ox: W / 2, oy: H * 0.88 };
+  }
+  const toX = (v, x) => v.ox + x * v.sc, toY = (v, y) => v.oy - y * v.sc;
+
+  function drawShip(v, s, alpha, tint) {
+    const px = toX(v, s.x), py = toY(v, s.y), k = Math.max(v.sc * 1.25, 3.4);
+    ctx.save(); ctx.globalAlpha = alpha; ctx.translate(px, py); ctx.rotate(s.th);
+    // llama principal
+    if (s.aT > 0.05 && s.status === 'flying') {
+      const len = (s.aT / P.TMAX) * 5 * k * (0.85 + Math.random() * 0.3);
+      const g = ctx.createLinearGradient(0, 0, 0, len);
+      g.addColorStop(0, 'rgba(255,236,170,0.95)'); g.addColorStop(0.5, 'rgba(255,140,50,0.7)'); g.addColorStop(1, 'rgba(255,80,20,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(-0.7 * k, 0.1 * k); ctx.lineTo(0.7 * k, 0.1 * k); ctx.lineTo(0, 0.1 * k + len); ctx.closePath(); ctx.fill();
+    }
+    // propulsores laterales
+    if (s.status === 'flying' && Math.abs(s.tau || 0) > 0.3) {
+      const dir = Math.sign(s.tau);
+      ctx.fillStyle = 'rgba(210,225,255,0.85)';
+      ctx.beginPath(); ctx.arc(-dir * 1.5 * k, -2.6 * k, 0.35 * k, 0, 7); ctx.fill();
+    }
+    // patas
+    ctx.strokeStyle = '#c9cfd8'; ctx.lineWidth = Math.max(1, 0.25 * k);
+    ctx.beginPath(); ctx.moveTo(-0.9 * k, -0.9 * k); ctx.lineTo(-1.8 * k, 0); ctx.moveTo(0.9 * k, -0.9 * k); ctx.lineTo(1.8 * k, 0);
+    ctx.moveTo(-2.2 * k, 0); ctx.lineTo(-1.4 * k, 0); ctx.moveTo(1.4 * k, 0); ctx.lineTo(2.2 * k, 0); ctx.stroke();
+    // etapa de descenso (dorada) y cabina
+    ctx.fillStyle = tint || '#d4a93a'; ctx.fillRect(-1.3 * k, -1.6 * k, 2.6 * k, 1.1 * k);
+    ctx.fillStyle = '#dde3ea'; ctx.beginPath();
+    ctx.moveTo(-1.1 * k, -1.6 * k); ctx.lineTo(-0.9 * k, -3.0 * k); ctx.lineTo(0.9 * k, -3.0 * k); ctx.lineTo(1.1 * k, -1.6 * k); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#2a3446'; ctx.fillRect(-0.4 * k, -2.7 * k, 0.8 * k, 0.5 * k);
+    ctx.restore();
+  }
+
+  function draw() {
+    if (!W) return;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    const v = view();
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#05070d'); sky.addColorStop(1, '#141a2b');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#c8d0e0';
+    stars.forEach(([x, y, r]) => { ctx.globalAlpha = 0.35 + 0.5 * (r / 1.4); ctx.fillRect(x * W, y * H * 0.85, r, r); });
+    ctx.globalAlpha = 1;
+    // Tierra al fondo
+    ctx.fillStyle = '#3d6fb5'; ctx.beginPath(); ctx.arc(W * 0.84, H * 0.16, Math.max(8, H * 0.045), 0, 7); ctx.fill();
+    ctx.fillStyle = '#05070d'; ctx.beginPath(); ctx.arc(W * 0.84 + H * 0.018, H * 0.16 - H * 0.008, Math.max(8, H * 0.045), 0, 7); ctx.fill();
+    // cerros lejanos
+    ctx.fillStyle = '#23293a'; ctx.beginPath(); ctx.moveTo(0, v.oy);
+    for (let i = 0; i <= 40; i++) { const x = i / 40 * W; ctx.lineTo(x, v.oy - (14 + 10 * Math.sin(i * 0.9) + 7 * Math.sin(i * 2.3)) * (v.sc / 4)); }
+    ctx.lineTo(W, v.oy); ctx.closePath(); ctx.fill();
+    // suelo
+    ctx.fillStyle = '#8d8f92'; ctx.fillRect(0, v.oy, W, H - v.oy);
+    ctx.fillStyle = '#76787c';
+    for (let i = 0; i < 18; i++) { const r = E.rng(i + 50); ctx.beginPath(); ctx.ellipse(r() * W, v.oy + 6 + r() * (H - v.oy - 8), 4 + r() * 12, 1.5 + r() * 3, 0, 0, 7); ctx.fill(); }
+    // plataforma con marcas cada 2 m
+    const pl = toX(v, -P.PADW), pr = toX(v, P.PADW);
+    ctx.fillStyle = '#e9e3cf'; ctx.fillRect(pl, v.oy - 3, pr - pl, 5);
+    ctx.fillStyle = '#1b1f28';
+    for (let m = -P.PADW; m <= P.PADW; m += 2) ctx.fillRect(toX(v, m) - 0.5, v.oy - 3, 1, m === 0 ? 5 : 3);
+    ctx.fillStyle = '#e9e3cf'; ctx.font = '10px "IBM Plex Mono", monospace'; ctx.textAlign = 'center';
+    ctx.fillText('±8 m', (pl + pr) / 2, v.oy + 16);
+    // trayectorias previas de cada modo en este escenario
+    ['human', 'lqr', 'mpc', 'adp', 'evo'].forEach((m) => {
+      const g = S.ghosts[S.scenario + ':' + m];
+      if (!g || (S.running && m === S.mode)) return;
+      ctx.strokeStyle = MODE_COLOR[m]; ctx.globalAlpha = 0.55; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+      ctx.beginPath(); g.forEach((p, i) => { const x = toX(v, p[0]), y = toY(v, p[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+    });
+    if (EV.active) { drawPopulation(v); return; }
+    if (AD.active) { drawAdp(v); return; }
+    // futuros imaginados por el MPC
+    if (S.mode === 'mpc' && S.running && S.mpcCtrl && $('mpc-show').checked) {
+      const pl = S.mpcCtrl.plan;
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(240,122,180,0.28)';
+      pl.samples.forEach((pth) => { ctx.beginPath(); pth.forEach((p, i) => { const x = toX(v, p[0]), y = toY(v, p[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); });
+      if (pl.chosen.length) {
+        ctx.lineWidth = 2.5; ctx.strokeStyle = '#ffd1e8'; ctx.setLineDash([6, 4]);
+        ctx.beginPath(); pl.chosen.forEach((p, i) => { const x = toX(v, p[0]), y = toY(v, p[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.setLineDash([]);
+      }
+    }
+    // trayectoria del vuelo actual
+    if (S.path.length > 1) {
+      ctx.strokeStyle = MODE_COLOR[S.mode]; ctx.lineWidth = 2; ctx.beginPath();
+      S.path.forEach((p, i) => { const x = toX(v, p[0]), y = toY(v, p[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
+    }
+    const s = S.sim;
+    if (s) {
+      const px = toX(v, s.x), py = toY(v, s.y);
+      if (px < 0 || px > W || py < 0) {
+        // indicador de nave fuera de vista
+        const cx = Math.min(Math.max(px, 14), W - 14), cy = Math.min(Math.max(py, 14), H - 14);
+        ctx.fillStyle = MODE_COLOR[S.mode]; ctx.beginPath(); ctx.arc(cx, cy, 6, 0, 7); ctx.fill();
+      } else drawShip(v, s, 1);
+      if (s.status === 'crashed' && s.y <= 0.01) {
+        ctx.fillStyle = 'rgba(255,120,60,0.35)'; ctx.beginPath(); ctx.arc(px, py, 6 * Math.max(v.sc, 3), 0, 7); ctx.fill();
+      }
+    }
+  }
+
+  // ---------- Simulación ----------
+  function controlFor(s) {
+    if (S.mode === 'human') return { aT: S.keys.up ? P.TMAX : 0, tau: (S.keys.right ? P.TAUMAX : 0) - (S.keys.left ? P.TAUMAX : 0) };
+    if (S.mode === 'lqr') return E.lqrControl(S.K, s);
+    if (S.mode === 'evo') return EV.champ ? E.nnControl(EV.champ, s) : { aT: 0, tau: 0 };
+    if (S.mode === 'adp') return S.adpCtrl(s);
+    if (S.mode === 'mpc') return S.mpcCtrl(s);
+    return S.flyNet ? E.nnControl(S.flyNet, s) : { aT: 0, tau: 0 };
+  }
+  function resetFlight() {
+    S.sim = E.initialState(seedOf(S.scenario)); S.sim.aT = 0; S.sim.tau = 0;
+    S.running = false; S.done = false; S.path = [[S.sim.x, S.sim.y]];
+    $('result').hidden = true; $('launch').disabled = false;
+    updateHud(); draw();
+  }
+  function launch() {
+    if (S.running) return;
+    if (S.mode === 'evo') { if (!EV.champ) return; if (EV.running) toggleEvolve(false); if (EV.active) { EV.active = false; resetFlight(); updateTag(); } }
+    if (S.mode === 'adp') {
+      if (AD.running) toggleLearn(false);
+      if (AD.active) { AD.active = false; resetFlight(); updateTag(); }
+      S.adpCtrl = QL.playController(AD.L.K.map((r) => r.slice())); S.adpIter = AD.L.iteration;
+    }
+    if (S.mode === 'adp') {
+      if (AD.running) toggleLearn(false);
+      if (AD.active) { AD.active = false; resetFlight(); updateTag(); }
+      S.adpCtrl = QL.playController(AD.L.K.map((r) => r.slice())); S.adpIter = AD.L.iteration;
+    }
+    if (S.done) resetFlight();
+    if (S.mode === 'mpc') { S.mpcCtrl = MPC.createMPC({ horizon: S.mpcH, seed: 1 + Math.floor(Math.random() * 1e9) }); S.mpcHUsed = S.mpcH; }
+    S.running = true; $('launch').disabled = true; $('result').hidden = true;
+    $('tstatus').textContent = 'en vuelo';
+  }
+  let acc = 0, last = performance.now(), pathTick = 0;
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (EV.active) { evoFrame(dt); }
+    else if (AD.active) { adpFrame(dt); }
+    else if (S.running) {
+      acc += dt * S.speed;
+      while (acc >= P.DT && S.running) {
+        acc -= P.DT;
+        S.sim = E.step(S.sim, controlFor(S.sim), P.DT);
+        if (++pathTick % 3 === 0 || S.sim.status !== 'flying') S.path.push([S.sim.x, S.sim.y]);
+        if (S.sim.status !== 'flying') finish();
+      }
+      updateHud();
+    } else acc = 0;
+    draw();
+    requestAnimationFrame(frame);
+  }
+  function finish() {
+    S.running = false; S.done = true; $('launch').disabled = false;
+    const s = S.sim, c = E.cost(s);
+    S.ghosts[S.scenario + ':' + S.mode] = S.path.slice();
+    const ok = s.status === 'landed';
+    $('tstatus').textContent = ok ? 'aterrizó' : 'se estrelló';
+    const who = S.mode === 'mpc' ? `MPC · horizonte ${S.mpcHUsed} s` : S.mode === 'adp' ? `LQR aprendido · iteración ${S.adpIter}` : S.mode === 'evo' ? `Red evolutiva · campeón de la generación ${EV.champGen}` : MODE_LABEL[S.mode];
+    $('result').innerHTML =
+      `<h2 class="${ok ? 'ok' : 'ko'}">${ok ? 'Aterrizaje exitoso' : 'Se estrelló'}</h2>` +
+      `<p class="why">${ok ? who + ' · ' + s.t.toFixed(1) + ' s de vuelo' : s.reason + ' · no cuenta para la tabla'}</p>` +
+      `<div class="bd"><span>Combustible</span><span>${c.fuel.toFixed(1)}</span>` +
+      `<span>10 × ${s.impactSpeed.toFixed(2)} m/s</span><span>${c.speed.toFixed(1)}</span>` +
+      `<span>2 × ${Math.abs(s.x).toFixed(1)} m</span><span>${c.dev.toFixed(1)}</span>` +
+      `<span class="jt">J</span><span class="jt">${c.J.toFixed(1)}</span></div>`;
+    $('result').hidden = false;
+    if (ok) submitScore(c, s);
+  }
+  function fmt(v, d, u) { return v.toFixed(d) + (u ? ' ' + u : ''); }
+  function updateHud() {
+    const s = S.sim; if (!s) return;
+    $('t-alt').textContent = fmt(s.y, 1, 'm');
+    $('t-dev').textContent = fmt(s.x, 1, 'm');
+    $('t-vx').textContent = fmt(s.vx, 2, 'm/s');
+    $('t-vy').textContent = fmt(s.vy, 2, 'm/s');
+    $('t-th').textContent = fmt(s.th * 180 / Math.PI, 0, '°');
+    $('t-fuel').textContent = fmt(100 * s.fuel / P.FUEL0, 0, '%');
+    $('fuelbar').style.width = (100 * s.fuel / P.FUEL0) + '%';
+    const c = E.cost(s);
+    $('j-f').textContent = c.fuel.toFixed(1); $('j-v').textContent = c.speed.toFixed(1);
+    $('j-d').textContent = c.dev.toFixed(1); $('j-t').textContent = c.J.toFixed(1);
+    if (!S.running && !S.done) $('tstatus').textContent = 'en espera';
+    if (S.mode === 'mpc' && S.mpcCtrl && S.running && S.mpcCtrl.plan.best != null) $('mpc-pred').textContent = (s.fuelUsed + S.mpcCtrl.plan.best).toFixed(1);
+    $('j-lab').textContent = S.done ? 'J final' : 'J si tocara ahora';
+  }
+
+  // ---------- Modo y escenario ----------
+  function setMode(m) {
+    if (S.running) return;
+    if (EV.active && m !== 'evo') { toggleEvolve(false); EV.active = false; }
+    S.mode = m;
+    document.querySelectorAll('.modes button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
+    $('card-human').hidden = m !== 'human'; $('card-lqr').hidden = m !== 'lqr'; $('card-adp').hidden = m !== 'adp'; $('card-mpc').hidden = m !== 'mpc'; $('card-evo').hidden = m !== 'evo';
+    if (m !== 'evo' && EV.running) toggleEvolve(false);
+    if (m !== 'adp' && AD.active) { toggleLearn(false); AD.active = false; }
+    $('touch').classList.toggle('show', m === 'human');
+    $('keys').hidden = m !== 'human';
+    resetFlight(); updateTag();
+  }
+  function setScenario(n) {
+    if (S.running) return;
+    S.scenario = Math.max(1, n); $('scen').textContent = 'Escenario ' + S.scenario;
+    resetFlight(); updateTag(); renderBoard();
+  }
+  function updateTag() { $('hudtag').textContent = `Escenario ${S.scenario} · ${MODE_LABEL[S.mode]}`; }
+  document.querySelectorAll('.modes button').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+  $('prev').onclick = () => setScenario(S.scenario - 1);
+  $('next').onclick = () => setScenario(S.scenario + 1);
+  $('launch').onclick = launch;
+  $('reset').onclick = () => { if (S.running) { S.running = false; } if (EV.active) { toggleEvolve(false); EV.active = false; } if (AD.active) { toggleLearn(false); AD.active = false; } resetFlight(); updateTag(); };
+  document.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => {
+    S.speed = +b.dataset.speed;
+    document.querySelectorAll('.seg button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  }));
+
+  // ---------- Teclado y táctil ----------
+  const keyMap = { ArrowUp: 'up', KeyW: 'up', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right' };
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    if (keyMap[e.code]) { S.keys[keyMap[e.code]] = true; e.preventDefault(); if (S.mode === 'human' && !S.running && !S.done && keyMap[e.code] === 'up') launch(); }
+    if (e.code === 'Space') { e.preventDefault(); S.running ? null : launch(); }
+  });
+  window.addEventListener('keyup', (e) => { if (keyMap[e.code]) S.keys[keyMap[e.code]] = false; });
+  window.addEventListener('blur', () => { S.keys.up = S.keys.left = S.keys.right = false; });
+  [['t-left', 'left'], ['t-right', 'right'], ['t-thrust', 'up']].forEach(([id, k]) => {
+    const el = $(id);
+    el.addEventListener('pointerdown', (e) => { e.preventDefault(); S.keys[k] = true; if (!S.running && !S.done) launch(); el.setPointerCapture(e.pointerId); });
+    const up = () => { S.keys[k] = false; };
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); el.addEventListener('lostpointercapture', up);
+  });
+  try { $('pname').value = localStorage.getItem('aterriza-nombre') || ''; } catch (e) {}
+  $('pname').addEventListener('input', () => { try { localStorage.setItem('aterriza-nombre', $('pname').value); } catch (e) {} });
+
+  // ---------- Control predictivo (MPC) ----------
+  const MPC = makeMPC(E);
+  S.mpcH = 6;
+  document.querySelectorAll('#mpc-h button').forEach((b) => b.addEventListener('click', () => {
+    if (S.running) return;
+    S.mpcH = +b.dataset.h;
+    document.querySelectorAll('#mpc-h button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    $('mpc-state').textContent = 'horizonte ' + S.mpcH + ' s';
+  }));
+
+  // ---------- LQR aprendido sin modelo (Q-learning con iteración de política) ----------
+  const QL = makeQLearn(E);
+  const AD = { L: null, active: false, running: false, ships: [], pause: 0, acc: 0, curve: [], msg: '', seed: 1 + Math.floor(Math.random() * 1e6), batch: 12, lastLanded: null };
+  function adpEval() {
+    const ev = E.evaluate(QL.playController(AD.L.K));
+    AD.curve.push({ it: AD.L.iteration, dist: AD.L.distance(), J: ev.J, ok: ev.success });
+  }
+  function adpFresh() {
+    AD.L = QL.createLearner(1 + Math.floor(Math.random() * 1e9));
+    AD.curve = []; AD.msg = ''; AD.lastLanded = null; AD.ships = [];
+    adpEval();
+  }
+  function adpStartBatch() {
+    AD.ships = [];
+    for (let i = 0; i < AD.batch; i++) {
+      const s = QL.practiceState(AD.seed++); s.aT = 0; s.tau = 0;
+      AD.ships.push({ s, ctrl: AD.L.flightController(true), path: [[s.x, s.y]] });
+    }
+    AD.pause = 0; AD.acc = 0; AD.msg = '';
+    $('hudtag').textContent = `Vuelos de práctica · tanda ${AD.L.iteration + 1}`;
+  }
+  function adpEndBatch() {
+    const landed = AD.ships.filter((sh) => sh.s.status === 'landed').length;
+    AD.lastLanded = landed;
+    const r = AD.L.batchDone(landed);
+    if (r.action === 'update') { adpEval(); AD.msg = `K actualizada · a ${(100 * r.dist).toFixed(0)}% de Riccati`; }
+    else if (r.action === 'revert') { AD.curve.push(Object.assign({}, AD.curve[AD.curve.length - 1], { reverted: true })); AD.msg = 'La K nueva aterrizó peor: se descarta'; }
+    else AD.msg = `Reuniendo datos (${AD.L.data.length} muestras)`;
+    AD.pause = 1.4 / Math.min(S.speed, 4);
+    renderAdp();
+  }
+  function adpFrame(dt) {
+    if (!AD.running) return;
+    if (AD.pause > 0) { AD.pause -= dt; if (AD.pause <= 0) adpStartBatch(); return; }
+    AD.acc += dt * S.speed;
+    let alive = true;
+    while (AD.acc >= P.DT && alive) {
+      AD.acc -= P.DT; alive = false;
+      for (const sh of AD.ships) {
+        if (sh.s.status !== 'flying') continue;
+        sh.s = E.step(sh.s, sh.ctrl(sh.s), P.DT);
+        if (Math.round(sh.s.t / P.DT) % 4 === 0 || sh.s.status !== 'flying') sh.path.push([sh.s.x, sh.s.y]);
+        if (sh.s.status === 'flying') alive = true;
+      }
+    }
+    if (AD.ships[0]) { S.sim = AD.ships[0].s; updateHud(); $('tstatus').textContent = 'vuelo de práctica'; }
+    if (!alive) { AD.acc = 0; adpEndBatch(); }
+  }
+  function drawAdp(v) {
+    const done = AD.ships.length && AD.ships.every((sh) => sh.s.status !== 'flying');
+    AD.ships.forEach((sh) => {
+      ctx.strokeStyle = sh.s.status === 'landed' ? 'rgba(127,216,156,0.55)' : 'rgba(168,139,240,0.35)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); sh.path.forEach((p, i) => { const x = toX(v, p[0]), y = toY(v, p[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
+    });
+    AD.ships.forEach((sh) => {
+      const s = sh.s, px = toX(v, s.x), py = toY(v, s.y);
+      if (px < -20 || px > W + 20 || py < -20) return;
+      if (s.status === 'crashed') { ctx.fillStyle = 'rgba(255,110,90,0.5)'; ctx.beginPath(); ctx.arc(px, py, Math.max(3, v.sc * 1.2), 0, 7); ctx.fill(); return; }
+      drawShip(v, s, s.status === 'landed' ? 1 : 0.9, s.status === 'landed' ? '#7fd89c' : '#a88bf0');
+    });
+    ctx.fillStyle = '#dfe6ee'; ctx.font = '12px "IBM Plex Mono", monospace'; ctx.textAlign = 'right';
+    const txt = done ? `Aterrizaron ${AD.lastLanded ?? '…'} de ${AD.batch}${AD.msg ? ' · ' + AD.msg : ''}` : `Tanda ${AD.L.iteration + 1}: 12 vuelos de práctica con ruido`;
+    ctx.fillText(txt, W - 12, 22);
+  }
+  function toggleLearn(on) {
+    AD.running = on;
+    if (on) {
+      AD.active = true; S.running = false; S.done = false; $('result').hidden = true;
+      if (!AD.ships.length || AD.ships.every((sh) => sh.s.status !== 'flying')) adpStartBatch();
+    }
+    renderAdp();
+  }
+  function renderAdp() {
+    const L = AD.L, last = AD.curve[AD.curve.length - 1];
+    $('learn').textContent = AD.running ? 'Pausar' : (L.iteration ? 'Seguir aprendiendo' : 'Aprender');
+    $('adp-it').textContent = L.iteration;
+    $('adp-dist').textContent = (100 * L.distance()).toFixed(0) + ' %';
+    $('adp-j').textContent = last ? last.J.toFixed(1) : '—';
+    $('adp-state').textContent = AD.running ? 'aprendiendo…' : (L.iteration ? 'en pausa' : 'sin aprender');
+    // tabla: K aprendida contra K de Riccati
+    const cols = ['x', 'y', 'vx', 'vy', 'θ', 'ω'], rows = ['empuje', 'giro'];
+    const f = (v) => (Math.abs(v) < 5e-3 ? '0' : v.toFixed(2));
+    let h = '<tr><th></th>' + cols.map((c) => `<th>${c}</th>`).join('') + '</tr>';
+    L.K.forEach((r, i) => {
+      h += `<tr><th>${rows[i]}</th>` + r.map((v) => `<td>${f(v)}</td>`).join('') + '</tr>';
+      h += `<tr class="ref"><th>Riccati</th>` + QL.K_STAR[i].map((v) => `<td>${f(v)}</td>`).join('') + '</tr>';
+    });
+    $('kmat-adp').innerHTML = h;
+    drawDist();
+  }
+  function drawDist() {
+    const svg = $('adp-curve'), w = 300, h = 150, ml = 34, mr = 8, mt = 10, mb = 20, pts = AD.curve;
+    const maxIt = Math.max(10, pts.length ? pts[pts.length - 1].it : 0);
+    const X = (it) => ml + (it / maxIt) * (w - ml - mr);
+    const Y = (d) => mt + (1 - Math.min(Math.max(d, 0), 1)) * (h - mt - mb);
+    let g = '';
+    [0, 0.25, 0.5, 0.75, 1].forEach((d) => { g += `<line x1="${ml}" x2="${w - mr}" y1="${Y(d)}" y2="${Y(d)}" stroke="var(--line)" stroke-width="1"/><text x="${ml - 4}" y="${Y(d) + 3}" text-anchor="end">${d * 100}%</text>`; });
+    const step = maxIt <= 10 ? 2 : maxIt <= 30 ? 5 : 10;
+    for (let k = 0; k <= maxIt; k += step) g += `<text x="${X(k)}" y="${h - 6}" text-anchor="middle">${k}</text>`;
+    g += `<line x1="${ml}" x2="${w - mr}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--lqr)" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+    if (pts.length > 1) g += `<polyline fill="none" stroke="var(--adp)" stroke-width="1.8" points="${pts.map((p) => X(p.it).toFixed(1) + ',' + Y(p.dist).toFixed(1)).join(' ')}"/>`;
+    pts.forEach((p) => {
+      g += p.reverted
+        ? `<circle cx="${X(p.it)}" cy="${Y(p.dist)}" r="3" fill="var(--panel)" stroke="var(--bad)" stroke-width="1.2"/>`
+        : `<circle cx="${X(p.it)}" cy="${Y(p.dist)}" r="2.4" fill="var(--adp)"/>`;
+    });
+    g += `<text x="${w - mr}" y="${h - 6}" text-anchor="end" opacity="0">.</text>`;
+    svg.innerHTML = g;
+  }
+  $('learn').onclick = () => toggleLearn(!AD.running);
+  $('adpreset').onclick = () => { AD.running = false; adpFresh(); renderAdp(); toggleLearn(true); };
+
+  function drawCurveInto(svg, pts, color, emptyMsg) {
+    const w = 300, h = 150, ml = 30, mr = 8, mt = 8, mb = 20;
+    const maxIt = Math.max(color === 'var(--evo)' ? 50 : 100, pts.length ? pts[pts.length - 1].it : 0);
+    const yMax = 160, yMin = 20;
+    const X = (it) => ml + (it / maxIt) * (w - ml - mr);
+    const Y = (j) => mt + (1 - (Math.min(Math.max(j, yMin), yMax) - yMin) / (yMax - yMin)) * (h - mt - mb);
+    let g = '';
+    [20, 60, 100, 140].forEach((t) => { g += `<line x1="${ml}" x2="${w - mr}" y1="${Y(t)}" y2="${Y(t)}" stroke="var(--line)" stroke-width="1"/><text x="${ml - 4}" y="${Y(t) + 3}" text-anchor="end">${t}</text>`; });
+    const step = maxIt <= 50 ? 10 : maxIt <= 200 ? 50 : maxIt <= 600 ? 100 : 250;
+    for (let t = 0; t <= maxIt; t += step) g += `<text x="${X(t)}" y="${h - 6}" text-anchor="middle">${t}</text>`;
+    g += `<text x="${w - mr}" y="${h - 6}" text-anchor="end" opacity="0">.</text>`;
+    g += `<line x1="${ml}" x2="${w - mr}" y1="${Y(lqrEval.J)}" y2="${Y(lqrEval.J)}" stroke="var(--lqr)" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+    g += `<text x="${w - mr}" y="${Y(lqrEval.J) - 4}" text-anchor="end" style="fill: var(--lqr)">LQR ${lqrEval.J.toFixed(1)}</text>`;
+    if (pts.length > 1) {
+      g += `<polyline fill="none" stroke="${color}" stroke-width="1.8" points="${pts.map((p) => X(p.it).toFixed(1) + ',' + Y(p.J).toFixed(1)).join(' ')}"/>`;
+    }
+    pts.forEach((p, i) => {
+      if (pts.length > 60 && i % Math.ceil(pts.length / 60) && i !== pts.length - 1) return;
+      g += p.ok === 1
+        ? `<circle cx="${X(p.it)}" cy="${Y(p.J)}" r="2.2" fill="${color}"/>`
+        : `<circle cx="${X(p.it)}" cy="${Y(p.J)}" r="2.2" fill="var(--panel)" stroke="var(--bad)" stroke-width="1"/>`;
+    });
+    if (!pts.length) g += `<text x="${(w + ml) / 2}" y="${h / 2}" text-anchor="middle">${emptyMsg}</text>`;
+    g += `<text x="${ml}" y="${mt - 1}" text-anchor="start" opacity="0">J</text>`;
+    svg.innerHTML = g;
+  }
+
+
+  // ---------- Red evolutiva: aprende de sus propias jugadas ----------
+  const EV = {
+    H: 12, pop: 30, elite: 6, sigma: 0.2,
+    active: false, running: false, gen: 0, genomes: [], ships: [], pause: 0,
+    seed: 900000, genSeed: 0, fixed: false, curve: [], champ: null, champGen: 0,
+    lastLanded: null, lastBest: null, acc: 0,
+  };
+  const evoTemplate = E.createNet(EV.H, 1);
+  const evoRng = E.rng(2024);
+  const gauss = () => { let u = 0; while (!u) u = evoRng(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * evoRng()); };
+  function flat(net) { const a = []; net.L.forEach((l) => { a.push(...l.W, ...l.b); }); return Float64Array.from(a); }
+  function unflat(v) { const net = E.cloneNet(evoTemplate); let k = 0; net.L.forEach((l) => { for (let i = 0; i < l.W.length; i++) l.W[i] = v[k++]; for (let i = 0; i < l.b.length; i++) l.b[i] = v[k++]; }); return net; }
+  // Aptitud: J si aterrizó; si se estrelló, J más un castigo que crece con qué tan mal llegó
+  function fitness(s) {
+    const c = E.cost(s);
+    if (s.status === 'landed') return c.J;
+    let f = c.J + 60;
+    if (s.y > 0.01) f += 3 * s.y + 100;
+    f += 15 * Math.max(0, Math.abs(s.vy) - P.VY_OK) + 15 * Math.max(0, Math.abs(s.vx) - P.VX_OK) + 40 * Math.max(0, Math.abs(s.th) - P.TH_OK) + 3 * Math.max(0, Math.abs(s.x) - P.PADW);
+    return f;
+  }
+  function newPopulation() {
+    EV.genomes = []; for (let i = 0; i < EV.pop; i++) EV.genomes.push({ v: flat(E.createNet(EV.H, 100 + i + Math.floor(evoRng() * 1e6))), parent: false });
+    EV.gen = 0; EV.sigma = 0.2; EV.curve = []; EV.champ = null; EV.champGen = 0; EV.lastLanded = null; EV.lastBest = null;
+  }
+  function startGeneration() {
+    EV.gen++;
+    EV.genSeed = EV.fixed ? seedOf(S.scenario) : EV.seed++;
+    const s0 = E.initialState(EV.genSeed); s0.aT = 0; s0.tau = 0;
+    EV.ships = EV.genomes.map((g) => ({ net: unflat(g.v), parent: g.parent, s: Object.assign({}, s0), path: [[s0.x, s0.y]], v: g.v }));
+    EV.pause = 0; EV.acc = 0; renderEvo();
+    $('hudtag').textContent = EV.fixed ? `Escenario ${S.scenario} · Red evolutiva` : 'Escenario de práctica · Red evolutiva';
+  }
+  function endGeneration() {
+    EV.ships.forEach((sh) => { sh.f = fitness(sh.s); });
+    const ranked = EV.ships.slice().sort((a, b) => a.f - b.f);
+    EV.lastLanded = EV.ships.filter((sh) => sh.s.status === 'landed').length;
+    const bestLanded = ranked.find((sh) => sh.s.status === 'landed');
+    EV.lastBest = bestLanded ? E.cost(bestLanded.s).J : null;
+    ranked.slice(0, EV.elite).forEach((sh) => { sh.elite = true; });
+    // el campeón de esta generación se mide en los 8 escenarios de prueba
+    const champNet = ranked[0].net;
+    const ev = E.evaluate((s) => E.nnControl(champNet, s));
+    EV.curve.push({ it: EV.gen, J: ev.J, ok: ev.success });
+    if (!EV.champ || ev.success > EV.champEval.success || (ev.success === EV.champEval.success && ev.J <= EV.champEval.J)) {
+      EV.champ = champNet; EV.champGen = EV.gen; EV.champEval = ev;
+    }
+    // selección y mutación
+    const parents = ranked.slice(0, EV.elite).map((sh) => sh.v);
+    const next = parents.map((v) => ({ v, parent: true }));
+    while (next.length < EV.pop) {
+      const p = parents[Math.floor(evoRng() * parents.length)], c = new Float64Array(p.length);
+      for (let i = 0; i < p.length; i++) c[i] = p[i] + EV.sigma * gauss();
+      next.push({ v: c, parent: false });
+    }
+    EV.genomes = next; EV.sigma = Math.max(0.02, EV.sigma * 0.99);
+    // en modo de escenario fijo, la mejor jugada entra a la tabla
+    if (EV.fixed && bestLanded) {
+      EV.boardGen = EV.gen; submitScore(E.cost(bestLanded.s), bestLanded.s, 'evo'); EV.boardGen = null;
+    }
+    EV.pause = 1.2 / Math.min(S.speed, 4);
+    renderEvo();
+  }
+  function evoFrame(dt) {
+    if (!EV.running) return;
+    if (EV.pause > 0) { EV.pause -= dt; if (EV.pause <= 0) startGeneration(); return; }
+    EV.acc += dt * S.speed;
+    let alive = true;
+    while (EV.acc >= P.DT && alive) {
+      EV.acc -= P.DT; alive = false;
+      for (const sh of EV.ships) {
+        if (sh.s.status !== 'flying') continue;
+        sh.s = E.step(sh.s, E.nnControl(sh.net, sh.s), P.DT);
+        if (Math.round(sh.s.t / P.DT) % 4 === 0 || sh.s.status !== 'flying') sh.path.push([sh.s.x, sh.s.y]);
+        if (sh.s.status === 'flying') alive = true;
+      }
+    }
+    const flying = EV.ships.filter((sh) => sh.s.status === 'flying').length;
+    // la telemetría sigue a la primera nave (la mejor de la generación anterior)
+    if (EV.ships[0]) { S.sim = EV.ships[0].s; updateHud(); $('tstatus').textContent = 'sigue a la líder'; }
+    $('evo-state').textContent = `generación ${EV.gen} · ${flying} en vuelo`;
+    if (!alive) { EV.acc = 0; endGeneration(); }
+  }
+  function drawPopulation(v) {
+    const done = EV.ships.length && EV.ships.every((sh) => sh.s.status !== 'flying');
+    EV.ships.forEach((sh) => {
+      ctx.strokeStyle = sh.s.status === 'landed' ? 'rgba(127,216,156,0.55)' : 'rgba(79,193,181,0.22)';
+      ctx.lineWidth = sh.elite && done ? 2 : 1;
+      ctx.beginPath(); sh.path.forEach((p, i) => { const x = toX(v, p[0]), y = toY(v, p[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
+    });
+    EV.ships.forEach((sh) => {
+      const s = sh.s, px = toX(v, s.x), py = toY(v, s.y);
+      if (px < -20 || px > W + 20 || py < -20) return;
+      if (s.status === 'crashed') { ctx.fillStyle = 'rgba(255,110,90,0.5)'; ctx.beginPath(); ctx.arc(px, py, Math.max(3, v.sc * 1.2), 0, 7); ctx.fill(); return; }
+      drawShip(v, s, s.status === 'landed' ? 1 : 0.85, s.status === 'landed' ? '#7fd89c' : sh.parent ? '#f2c94c' : '#4fc1b5');
+    });
+    ctx.fillStyle = '#dfe6ee'; ctx.font = '12px "IBM Plex Mono", monospace'; ctx.textAlign = 'right';
+    const txt = done && EV.lastLanded !== null ? `Generación ${EV.gen}: aterrizaron ${EV.lastLanded} de ${EV.pop}` : `Generación ${EV.gen}`;
+    ctx.fillText(txt, W - 12, 22);
+  }
+  function toggleEvolve(on) {
+    EV.running = on;
+    if (on) {
+      EV.active = true; S.running = false; S.done = false; $('result').hidden = true;
+      if (!EV.genomes.length) newPopulation();
+      if (!EV.ships.length || EV.ships.every((sh) => sh.s.status !== 'flying')) startGeneration();
+      $('tstatus').textContent = 'evolucionando';
+    }
+    renderEvo();
+  }
+  function renderEvo() {
+    $('evolve').textContent = EV.running ? 'Pausar' : (EV.gen ? 'Seguir evolucionando' : 'Evolucionar');
+    $('evo-gen').textContent = EV.gen;
+    $('evo-landed').textContent = EV.lastLanded === null ? '—' : `${EV.lastLanded} / ${EV.pop}`;
+    $('evo-best').textContent = EV.lastBest === null ? '—' : EV.lastBest.toFixed(1);
+    if (!EV.running) $('evo-state').textContent = EV.champ ? `campeón: gen. ${EV.champGen}` : (EV.gen ? 'en pausa' : 'generación 0');
+    drawCurveInto($('evo-curve'), EV.curve, 'var(--evo)', 'Pulsa Evolucionar para ver la curva');
+  }
+  $('evolve').onclick = () => toggleEvolve(!EV.running);
+  $('evoreset').onclick = () => { EV.running = false; newPopulation(); EV.ships = []; EV.active = true; toggleEvolve(true); };
+  $('evo-var').onclick = () => { EV.fixed = false; $('evo-var').setAttribute('aria-pressed', 'true'); $('evo-fix').setAttribute('aria-pressed', 'false'); };
+  $('evo-fix').onclick = () => { EV.fixed = true; $('evo-fix').setAttribute('aria-pressed', 'true'); $('evo-var').setAttribute('aria-pressed', 'false'); };
+
+  // ---------- Tabla de posiciones ----------
+  function submitScore(c, s, modeArg) {
+    const mode = modeArg || S.mode;
+    const base = { mode, scenario: S.scenario, J: +c.J.toFixed(2), fuel: +c.fuel.toFixed(2), speed: +s.impactSpeed.toFixed(3), dev: +Math.abs(s.x).toFixed(2), at: Date.now() };
+    let entry, id = null;
+    if (mode === 'human') entry = Object.assign({ name: ($('pname').value || 'Anónimo').trim().slice(0, 24) || 'Anónimo' }, base);
+    else if (mode === 'lqr') { entry = Object.assign({ name: 'Regulador LQR' }, base); id = 'lqr-' + S.scenario; }
+    else if (mode === 'mpc') { entry = Object.assign({ name: 'MPC · horizonte ' + S.mpcHUsed + ' s' }, base); id = 'mpc' + S.mpcHUsed + '-' + S.scenario; }
+    else if (mode === 'adp') { entry = Object.assign({ name: 'LQR aprendido · iter. ' + S.adpIter }, base); id = 'adp-' + S.scenario; }
+    else if (mode === 'nn') { entry = Object.assign({ name: 'Red gradiente · iter. ' + S.flyIter }, base); id = 'nn-' + S.scenario; }
+    else { entry = Object.assign({ name: 'Red evolutiva · gen. ' + (EV.boardGen || EV.champGen) }, base); id = 'evo-' + S.scenario; }
+    // Para LQR y red: una fila por escenario, se reemplaza solo si mejora
+    if (id) {
+      const prev = S.scores.find((x) => x._id === id);
+      if (prev && prev.J <= entry.J) return;
+    }
+    if (S.db) {
+      const ref = id ? S.db.collection('scores').doc(id) : S.db.collection('scores').doc();
+      ref.set(entry).catch(() => { localAdd(entry, id); });
+    } else localAdd(entry, id);
+  }
+  function localAdd(entry, id) {
+    const e = Object.assign({ _id: id || 'local-' + Date.now() }, entry);
+    S.scores = S.scores.filter((x) => x._id !== e._id).concat([e]);
+    renderBoard();
+  }
+  function renderBoard() {
+    const rows = S.scores.filter((x) => S.filter === 'all' || x.scenario === S.scenario).sort((a, b) => a.J - b.J).slice(0, 12);
+    $('board').innerHTML = rows.map((r, i) =>
+      `<li><span class="rk">${i + 1}</span><span class="chip" style="--c: var(--${r.mode})">${({ nn: 'Gradiente', mpc: 'MPC', adp: 'LQR aprendido', evo: 'Evolutiva', lqr: 'LQR', human: 'Humano' })[r.mode] || r.mode}</span>` +
+      `<span class="nm"></span><span class="j">${Number(r.J).toFixed(1)}</span></li>`).join('');
+    // nombres con textContent (vienen de otros participantes)
+    [...$('board').querySelectorAll('.nm')].forEach((el, i) => {
+      const r = rows[i]; el.textContent = r.name;
+      const sm = document.createElement('small');
+      sm.textContent = `esc. ${r.scenario} · comb ${Number(r.fuel).toFixed(0)} · v ${Number(r.speed).toFixed(2)} · d ${Number(r.dev).toFixed(1)}`;
+      el.appendChild(sm);
+    });
+    $('board-empty').hidden = rows.length > 0;
+    $('board-empty').textContent = S.filter === 'all' ? 'Todavía no hay aterrizajes exitosos.' : 'Todavía no hay aterrizajes exitosos en este escenario.';
+    $('board-src').textContent = S.shared ? 'Tabla compartida con todos los participantes. Menor J = mejor.' : 'Tabla de esta sesión. Menor J = mejor. Solo cuentan aterrizajes exitosos.';
+  }
+  $('f-scen').onclick = () => { S.filter = 'scen'; $('f-scen').setAttribute('aria-pressed', 'true'); $('f-all').setAttribute('aria-pressed', 'false'); renderBoard(); };
+  $('f-all').onclick = () => { S.filter = 'all'; $('f-all').setAttribute('aria-pressed', 'true'); $('f-scen').setAttribute('aria-pressed', 'false'); renderBoard(); };
+
+  (async function connectDb() {
+    try {
+      if (!window.claude || !window.claude.use) return;
+      const db = await window.claude.use('db');
+      if (!db) return;
+      S.db = db;
+      db.collection('scores').orderBy('J', 'asc').limit(300).onSnapshot((snap) => {
+        const local = S.scores.filter((x) => String(x._id).startsWith('local-'));
+        S.scores = snap.docs.map((d) => Object.assign({ _id: d.id }, d.data())).concat(local);
+        S.shared = true; renderBoard();
+      }, () => { S.db = null; S.shared = false; renderBoard(); });
+    } catch (e) { S.db = null; }
+  })();
+
+  // ---------- Arranque ----------
+  resize(); resetFlight(); renderBoard(); adpFresh(); renderAdp(); renderEvo(); setMode('human');
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
